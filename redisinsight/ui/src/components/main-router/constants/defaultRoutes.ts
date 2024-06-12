@@ -14,6 +14,7 @@ import PubSubPage from 'uiSrc/pages/pub-sub'
 import AnalyticsPage from 'uiSrc/pages/analytics'
 import TriggeredFunctionsPage from 'uiSrc/pages/triggered-functions'
 import RdiList from 'uiSrc/pages/rdi/home'
+import RedisearchPage from 'uiSrc/pages/redisearch'
 import { ANALYTICS_ROUTES, RDI_ROUTES, TRIGGERED_FUNCTIONS_ROUTES } from './sub-routes'
 
 import COMMON_ROUTES from './commonRoutes'
@@ -52,6 +53,11 @@ const ROUTES: IRoute[] = [
     exact: true,
     component: HomePage,
     isAvailableWithoutAgreements: true,
+  },
+  {
+    pageName: 'redisearch',
+    path: '/redisearch',
+    component: RedisearchPage,
   },
   ...COMMON_ROUTES,
   {

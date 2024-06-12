@@ -55,6 +55,32 @@ export const createDependencyProposals = (commandsSpec: ICommands): DependencyPr
   return result
 }
 
+export const createPureProposals = (commandsSpec: ICommands): DependencyProposals => {
+  const result: DependencyProposals = {}
+  const commandsArr = Object.keys(commandsSpec).sort()
+  commandsArr.forEach((command: string) => {
+    const commandInfo: ICommand = commandsSpec[command]
+    const range = { startLineNumber: 0, endLineNumber: 0, startColumn: 0, endColumn: 0 }
+    const commandArgs = commandInfo?.arguments || []
+    const detail: string = `${command} ${generateArgsNames(commandInfo?.provider, commandArgs).join(' ')}`
+    const insertText = `${command} `
+
+    result[command] = {
+      label: command,
+      kind: monacoEditor.languages.CompletionItemKind.Function,
+      detail,
+      insertText,
+      documentation: {
+        value: getCommandMarkdown(command, commandsSpec[command]),
+      },
+      insertTextRules: monacoEditor.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+      range
+    }
+  })
+
+  return result
+}
+
 export const getRedisCompletionProvider = (commandsSpec: ICommands):
 monacoEditor.languages.CompletionItemProvider => {
   // generate completion item for each redis command
