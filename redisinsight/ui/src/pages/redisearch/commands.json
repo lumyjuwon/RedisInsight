@@ -539,6 +539,7 @@
               {
                 "name": "order",
                 "type": "oneof",
+                "optional": true,
                 "arguments": [
                   {
                     "name": "asc",

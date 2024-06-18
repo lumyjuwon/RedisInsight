@@ -60,13 +60,14 @@ export const createPureProposals = (commandsSpec: ICommands): DependencyProposal
   const commandsArr = Object.keys(commandsSpec).sort()
   commandsArr.forEach((command: string) => {
     const commandInfo: ICommand = commandsSpec[command]
+    const token = commandsSpec.token || commandsSpec.arguments?.[0]?.token || command
     const range = { startLineNumber: 0, endLineNumber: 0, startColumn: 0, endColumn: 0 }
     const commandArgs = commandInfo?.arguments || []
     const detail: string = `${command} ${generateArgsNames(commandInfo?.provider, commandArgs).join(' ')}`
-    const insertText = `${command} `
+    const insertText = `${token} `
 
     result[command] = {
-      label: command,
+      label: token,
       kind: monacoEditor.languages.CompletionItemKind.Function,
       detail,
       insertText,

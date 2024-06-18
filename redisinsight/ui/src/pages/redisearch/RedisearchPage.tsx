@@ -30,6 +30,17 @@ const LIST_OF_INDEXES = [
   'index_2'
 ]
 
+const splitQuery = (query: string) => {
+  const regex = /"([^"]+)"|(\S+)/g
+  const matches = query.match(regex)
+  return matches?.map((match) => {
+    if (match.startsWith('"') && match.endsWith('"')) {
+      return match.slice(1, -1) // Remove the surrounding quotes
+    }
+    return match
+  }) || []
+}
+
 const RedisearchPage = () => {
   const [value, setValue] = useState('')
 
@@ -42,13 +53,6 @@ const RedisearchPage = () => {
 
   const onChange = (val: string) => {
     setValue(val)
-    updateSuggestions(val)
-  }
-
-  const updateSuggestions = (val: string) => {
-    if (!monacoObjects.current) return
-
-    setupSuggestions(val)
   }
 
   const editorDidMount = (
@@ -58,13 +62,35 @@ const RedisearchPage = () => {
     monacoObjects.current = { editor, monaco }
 
     window.monaco = monaco
-    setupSuggestions()
+    window.editor = editor
+
+    const suggestionsList = prepareSuggestions(
+      editor.getValue(),
+      editor.getModel() as any,
+      editor.getPosition() as any
+    )
+
+    setupSuggestions(suggestionsList)
+
+    editor.onDidChangeCursorPosition(() => {
+      const suggestionsList = prepareSuggestions(
+        editor.getValue(),
+        editor.getModel() as any,
+        editor.getPosition() as any
+      )
+
+      if (suggestionsList) {
+        setupSuggestions(suggestionsList)
+      }
+    })
   }
 
-  const setupSuggestions = (val: string = '') => {
-    const monaco = monacoObjects.current?.monaco
+  const setupSuggestions = (suggestions: any[]) => {
+    const { monaco, editor } = monacoObjects.current || {}
 
     if (!monaco) return
+
+    console.log({ suggestions })
 
     disposeCompletionItemProvider.current?.()
     disposeCompletionItemProvider.current = monaco.languages.registerCompletionItemProvider(
@@ -73,16 +99,15 @@ const RedisearchPage = () => {
         provideCompletionItems: (
           model: monacoEditor.editor.IModel,
           position: monacoEditor.Position
-        ): monacoEditor.languages.CompletionList => {
-          console.log('prepare')
-          const suggestions = prepareSuggestions(val, model, position)
-
-          return ({
-            suggestions
-          })
-        }
+        ): monacoEditor.languages.CompletionList => ({
+          suggestions
+        })
       }
     ).dispose
+
+    if (suggestions.length) {
+      setTimeout(() => editor?.trigger('', 'editor.action.triggerSuggest', undefined))
+    }
   }
 
   const prepareSuggestions = (
@@ -91,6 +116,22 @@ const RedisearchPage = () => {
     position: monacoEditor.Position
   ): monacoEditor.languages.CompletionItem[] => {
     const word = model.getWordUntilPosition(position)
+    const wordOutsideOffset = {
+      left: model.getValueInRange({
+        startColumn: word.startColumn - 1,
+        endColumn: word.endColumn,
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+      }),
+      right: model.getValueInRange({
+        startColumn: word.startColumn + 1,
+        endColumn: word.endColumn,
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+      })
+    }
+
+    console.log({ wordOutsideOffset })
     const line = model.getLineContent(position.lineNumber)
 
     const range = {
@@ -118,34 +159,117 @@ const RedisearchPage = () => {
       }))
     }
 
-    if (word.word) return []
+    if (word.word || wordOutsideOffset.left !== ' ' || wordOutsideOffset.right === '"') return []
 
     const prevLineQuery = line.slice(0, position.column)
-    const [, ...prevArgs] = val
+    const prevQuery = val
       .split('\n')
       .slice(0, position.lineNumber - 1)
       .concat(prevLineQuery)
       .join('')
-      .split(' ')
-      .filter(Boolean)
+
+    const [, ...prevArgs] = splitQuery(prevQuery)
 
     console.log({ prevArgs })
+
+    const isCompleteArg = (parent: any, current: any, prev) => {
+      // parent?.arguments ? prev.slice(i).length >= parent?.arguments?.filter((a) => !a.optional).length : true
+      console.log(current)
+      if (current.optional) return true
+      // TODO: update mechanism
+      if (prev?.length < parent?.arguments?.filter((arg: any) => !arg.optional).length) return false
+      if (current.type === 'integer') return false
+
+      return true
+    }
+
+    const buildRegex = (args: any[], asString = false) => {
+      let currentStringRegex = ''
+      args.forEach((arg) => {
+        let currentArg = ''
+
+        console.log(arg)
+        if (arg.optional) {
+          currentArg = `(?:( ${currentArg.trim()}))`
+        }
+
+        if (arg.multiple) {
+          console.log(currentArg)
+          currentArg = `(${currentArg})+`
+          console.log(currentArg)
+        }
+
+        if (arg.arguments) {
+          if (arg.type === 'oneof') {
+            currentArg += arg.arguments.map((arg) => arg.token).join('|')
+          } else {
+            currentArg = buildRegex(arg.arguments, true) as string
+          }
+        }
+
+        if (arg.token) {
+          currentArg += arg.token
+        }
+
+        if (arg.type === 'integer' || arg.type === 'string' || arg.type === 'function') {
+          currentArg = currentArg ? `${currentArg} (.*)` : '(.*)'
+        }
+
+        currentStringRegex += arg.optional ? currentArg : ` ${currentArg}`
+      })
+
+      if (asString) return currentStringRegex
+
+      try {
+        return new RegExp(currentStringRegex.trim(), 'i')
+      } catch {
+        return null
+      }
+    }
 
     const findArg = (args: any[], prev: string[], parent?: any): any => {
       for (let i = prev.length - 1; i >= 0; i--) {
         const arg = prev[i]
 
-        const foundArg = args
-          .find((cArg) =>
-            cArg.name?.toLowerCase() === arg.toLowerCase() || cArg.token?.toLowerCase() === arg.toLowerCase())
+        // TODO: update logic to find multiple args if token
+        const currentArg = args.find((cArg) => cArg.name?.toLowerCase() === arg.toLowerCase())
+        const token = args.find((cArg) => cArg.token?.toLowerCase() === arg.toLowerCase())
 
-        if (foundArg?.arguments) return findArg(foundArg.arguments, prev.slice(i), foundArg)
-        if (foundArg) {
-          return ({
-            foundArg,
+        if (currentArg?.arguments) return findArg(currentArg.arguments, prev.slice(i), currentArg)
+
+        if (token) {
+          if (parent) {
+            const regex = buildRegex(args) as RegExp
+
+            console.log(token)
+            console.log(regex)
+            console.log(prev.join(' '))
+            console.log(regex?.test(prev.join(' ')))
+
+            return {
+              parent,
+              currentArg,
+              index: i,
+              command: prev.slice(i),
+              isComplete: regex?.test(prev.join(' '))
+            }
+          }
+          return {
+            parent,
+            currentArg: token,
             index: i,
-            prev: prev.slice(i),
-            isComplete: parent?.arguments ? prev.slice(i).length >= parent?.arguments?.filter((a) => !a.optional).length : true
+            command: prev.slice(i),
+            isComplete: prev.slice(i).length >= 2
+          }
+        }
+
+        if (currentArg) {
+          return ({
+            parent,
+            currentArg,
+            index: i,
+            command: prev.slice(i),
+            isComplete: isCompleteArg(parent, currentArg, prev.slice(i))
           })
         }
       }
@@ -153,27 +277,29 @@ const RedisearchPage = () => {
       return null
     }
 
-    if (prevArgs.length === 0 && command.arguments[0].name === 'index') {
+    if (prevArgs.length === 0 && command?.arguments[0].name === 'index') {
       return LIST_OF_INDEXES.map((index) => ({
         label: index,
         kind: monacoEditor.languages.CompletionItemKind.Constant,
         insertText: `${index} "$1" `,
         insertTextRules: monacoEditor.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-        range
+        range,
       }))
     }
 
-    const foundArg = findArg(command.arguments, prevArgs)
+    const foundArg = findArg(command?.arguments || [], prevArgs)
     console.log({ foundArg })
 
     if (!foundArg || foundArg.isComplete) {
-      return command.arguments.map((arg) => ({
-        label: arg.token || arg.name?.toUpperCase() || '',
-        kind: monacoEditor.languages.CompletionItemKind.Constant,
-        insertText: `${arg.token || arg.name?.toUpperCase() || ''} `,
-        insertTextRules: monacoEditor.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-        range
-      }))
+      return command.arguments
+        .filter((arg) => arg.optional)
+        .map((arg) => ({
+          label: arg.token || arg.arguments?.[0].token || '',
+          kind: monacoEditor.languages.CompletionItemKind.Constant,
+          insertText: `${arg.token || arg.name?.toUpperCase() || ''} `,
+          insertTextRules: monacoEditor.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+          range,
+        }))
     }
 
     return []
