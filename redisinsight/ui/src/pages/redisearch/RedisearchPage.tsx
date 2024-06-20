@@ -227,6 +227,18 @@ const RedisearchPage = () => {
       }
     }
 
+    const isSinglePureToken = (arg: any, parent: any) => {
+      if (!parent) {
+        return arg?.type === 'pure-token'
+      }
+
+      if (parent?.arguments?.length === 1) {
+        return arg?.type === 'pure-token'
+      }
+
+      return false
+    }
+
     const findArg = (args: any[], prev: string[], parent?: any): any => {
       for (let i = prev.length - 1; i >= 0; i--) {
         const arg = prev[i]
@@ -251,7 +263,7 @@ const RedisearchPage = () => {
               currentArg,
               index: i,
               command: prev.slice(i),
-              isComplete: regex?.test(prev.join(' '))
+              isComplete: isSinglePureToken(currentArg, parent) || regex?.test(prev.join(' '))
             }
           }
           return {
@@ -259,7 +271,7 @@ const RedisearchPage = () => {
             currentArg: token,
             index: i,
             command: prev.slice(i),
-            isComplete: prev.slice(i).length >= 2
+            isComplete: isSinglePureToken(currentArg, parent) || prev.slice(i).length >= 2
           }
         }
 
@@ -269,7 +281,7 @@ const RedisearchPage = () => {
             currentArg,
             index: i,
             command: prev.slice(i),
-            isComplete: isCompleteArg(parent, currentArg, prev.slice(i))
+            isComplete: isSinglePureToken(currentArg, parent) || isCompleteArg(parent, currentArg, prev.slice(i))
           })
         }
       }
