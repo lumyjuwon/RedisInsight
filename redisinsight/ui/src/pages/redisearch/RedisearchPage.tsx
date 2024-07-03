@@ -3,6 +3,7 @@ import MonacoEditor, { monaco } from 'react-monaco-editor'
 import * as monacoEditor from 'monaco-editor'
 import { createPureProposals, Nullable } from 'uiSrc/utils'
 import { IEditorMount } from 'uiSrc/pages/workbench/interfaces'
+import { getArgByRest } from 'uiSrc/pages/redisearch/utils'
 import commands from './commands.json'
 import styles from './styles.module.scss'
 
@@ -60,24 +61,14 @@ const RedisearchPage = () => {
     monaco: typeof monacoEditor
   ) => {
     monacoObjects.current = { editor, monaco }
-
-    window.monaco = monaco
-    window.editor = editor
-
-    const suggestionsList = prepareSuggestions(
-      editor.getValue(),
-      editor.getModel() as any,
-      editor.getPosition() as any
-    )
+    const suggestionsList = prepareSuggestions(editor)
 
     setupSuggestions(suggestionsList)
 
+    // TODO: for testing - we show suggestion on each change cursor position
+    // hope it will be changed
     editor.onDidChangeCursorPosition(() => {
-      const suggestionsList = prepareSuggestions(
-        editor.getValue(),
-        editor.getModel() as any,
-        editor.getPosition() as any
-      )
+      const suggestionsList = prepareSuggestions(editor)
 
       if (suggestionsList) {
         setupSuggestions(suggestionsList)
@@ -87,21 +78,13 @@ const RedisearchPage = () => {
 
   const setupSuggestions = (suggestions: any[]) => {
     const { monaco, editor } = monacoObjects.current || {}
-
     if (!monaco) return
-
-    console.log({ suggestions })
 
     disposeCompletionItemProvider.current?.()
     disposeCompletionItemProvider.current = monaco.languages.registerCompletionItemProvider(
       'RediSearch',
       {
-        provideCompletionItems: (
-          model: monacoEditor.editor.IModel,
-          position: monacoEditor.Position
-        ): monacoEditor.languages.CompletionList => ({
-          suggestions
-        })
+        provideCompletionItems: (): monacoEditor.languages.CompletionList => ({ suggestions })
       }
     ).dispose
 
@@ -110,12 +93,25 @@ const RedisearchPage = () => {
     }
   }
 
+  const buildSuggestion = (arg: any, range: any, sortText?: string) => ({
+    label: arg.token || arg.arguments?.[0].token || '',
+    kind: monacoEditor.languages.CompletionItemKind.Constant,
+    insertText: `${arg.token || arg.arguments?.[0].token || arg.name?.toUpperCase() || ''} `,
+    insertTextRules: monacoEditor.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+    range,
+    sortText
+  })
+
   const prepareSuggestions = (
-    val: string,
-    model: monacoEditor.editor.IModel,
-    position: monacoEditor.Position
+    editor: monacoEditor.editor.IStandaloneCodeEditor
   ): monacoEditor.languages.CompletionItem[] => {
-    const word = model.getWordUntilPosition(position)
+    const value = editor.getValue()
+    const position = editor.getPosition()
+    const model = editor.getModel()
+
+    if (!position || !model) return []
+
+    const word = model?.getWordUntilPosition(position)
     const wordOutsideOffset = {
       left: model.getValueInRange({
         startColumn: word.startColumn - 1,
@@ -131,7 +127,7 @@ const RedisearchPage = () => {
       })
     }
 
-    console.log({ wordOutsideOffset })
+    // TODO: when cursor is before argument first letter comes to args
     const line = model.getLineContent(position.lineNumber)
 
     const range = {
@@ -141,16 +137,9 @@ const RedisearchPage = () => {
       startColumn: word.startColumn,
     }
 
-    console.log({ val })
-
-    console.log({ position })
-
-    const [firstArg] = val.split(' ')
+    const [firstArg] = value.split(' ')
     const commandName = firstArg?.toUpperCase()
     const command = commands[commandName]
-
-    console.log({ command })
-    console.log({ word })
 
     if (!command && position.lineNumber === 1 && word.startColumn === 1) {
       return DEFAULT_COMMANDS_LIST.map((command) => ({
@@ -159,10 +148,11 @@ const RedisearchPage = () => {
       }))
     }
 
-    if (word.word || wordOutsideOffset.left !== ' ' || wordOutsideOffset.right === '"') return []
+    // TODO: check this when we don't need to suggest
+    if (word.word || wordOutsideOffset.left !== ' ' || wordOutsideOffset.right) return []
 
     const prevLineQuery = line.slice(0, position.column)
-    const prevQuery = val
+    const prevQuery = value
       .split('\n')
       .slice(0, position.lineNumber - 1)
       .concat(prevLineQuery)
@@ -170,125 +160,29 @@ const RedisearchPage = () => {
 
     const [, ...prevArgs] = splitQuery(prevQuery)
 
-    console.log({ prevArgs })
-
-    const isCompleteArg = (parent: any, current: any, prev) => {
-      // parent?.arguments ? prev.slice(i).length >= parent?.arguments?.filter((a) => !a.optional).length : true
-      console.log(current)
-      if (current.optional) return true
-      // TODO: update mechanism
-      if (prev?.length < parent?.arguments?.filter((arg: any) => !arg.optional).length) return false
-      if (current.type === 'integer') return false
-
-      return true
-    }
-
-    const buildRegex = (args: any[], asString = false) => {
-      let currentStringRegex = ''
-      args.forEach((arg) => {
-        let currentArg = ''
-
-        console.log(arg)
-        if (arg.optional) {
-          currentArg = `(?:( ${currentArg.trim()}))`
-        }
-
-        if (arg.multiple) {
-          console.log(currentArg)
-          currentArg = `(${currentArg})+`
-          console.log(currentArg)
-        }
-
-        if (arg.arguments) {
-          if (arg.type === 'oneof') {
-            currentArg += arg.arguments.map((arg) => arg.token).join('|')
-          } else {
-            currentArg = buildRegex(arg.arguments, true) as string
-          }
-        }
-
-        if (arg.token) {
-          currentArg += arg.token
-        }
-
-        if (arg.type === 'integer' || arg.type === 'string' || arg.type === 'function') {
-          currentArg = currentArg ? `${currentArg} (.*)` : '(.*)'
-        }
-
-        currentStringRegex += arg.optional ? currentArg : ` ${currentArg}`
-      })
-
-      if (asString) return currentStringRegex
-
-      try {
-        return new RegExp(currentStringRegex.trim(), 'i')
-      } catch {
-        return null
-      }
-    }
-
-    const isSinglePureToken = (arg: any, parent: any) => {
-      if (!parent) {
-        return arg?.type === 'pure-token'
-      }
-
-      if (parent?.arguments?.length === 1) {
-        return arg?.type === 'pure-token'
-      }
-
-      return false
-    }
-
     const findArg = (args: any[], prev: string[], parent?: any): any => {
       for (let i = prev.length - 1; i >= 0; i--) {
         const arg = prev[i]
-
-        // TODO: update logic to find multiple args if token
-        const currentArg = args.find((cArg) => cArg.name?.toLowerCase() === arg.toLowerCase())
-        const token = args.find((cArg) => cArg.token?.toLowerCase() === arg.toLowerCase())
-
+        const currentArg = args.find((cArg) => cArg.arguments?.[0]?.token?.toLowerCase() === arg.toLowerCase() || cArg.name?.toLowerCase() === arg.toLowerCase())
         if (currentArg?.arguments) return findArg(currentArg.arguments, prev.slice(i), currentArg)
 
+        const tokenIndex = args.findIndex((cArg) => cArg.token?.toLowerCase() === arg.toLowerCase())
+        const token = args[tokenIndex]
+
         if (token) {
-          if (parent) {
-            const regex = buildRegex(args) as RegExp
+          const pastArgs = prev.slice(i)
+          const commandArgs = parent ? args.slice(tokenIndex, args.length) : [token]
 
-            console.log(token)
-            console.log(regex)
-            console.log(prev.join(' '))
-            console.log(regex?.test(prev.join(' ')))
-
-            return {
-              parent,
-              currentArg,
-              index: i,
-              command: prev.slice(i),
-              isComplete: isSinglePureToken(currentArg, parent) || regex?.test(prev.join(' '))
-            }
-          }
-          return {
-            parent,
-            currentArg: token,
-            index: i,
-            command: prev.slice(i),
-            isComplete: isSinglePureToken(currentArg, parent) || prev.slice(i).length >= 2
-          }
-        }
-
-        if (currentArg) {
-          return ({
-            parent,
-            currentArg,
-            index: i,
-            command: prev.slice(i),
-            isComplete: isSinglePureToken(currentArg, parent) || isCompleteArg(parent, currentArg, prev.slice(i))
-          })
+          // getArgByRest - here we preparing the list of arguments which can be inserted,
+          // this is the main function which suggest arguments
+          return getArgByRest(pastArgs, commandArgs)
         }
       }
 
       return null
     }
 
+    // just suggest indexes - in future get from BE
     if (prevArgs.length === 0 && command?.arguments[0].name === 'index') {
       return LIST_OF_INDEXES.map((index) => ({
         label: index,
@@ -302,16 +196,25 @@ const RedisearchPage = () => {
     const foundArg = findArg(command?.arguments || [], prevArgs)
     console.log({ foundArg })
 
+    // here we suggest arguments of argument
+    if (foundArg && !foundArg.isComplete) {
+      if (foundArg.isBlocked) return []
+      if (foundArg.append?.length) return foundArg.append.map((arg: any) => buildSuggestion(arg, range))
+      return []
+    }
+
+    // the main list of arguments + optional from argument
+    // TODO: remove arguments which already used if they are not multiple
     if (!foundArg || foundArg.isComplete) {
-      return command.arguments
-        .filter((arg) => arg.optional)
-        .map((arg) => ({
-          label: arg.token || arg.arguments?.[0].token || '',
-          kind: monacoEditor.languages.CompletionItemKind.Constant,
-          insertText: `${arg.token || arg.name?.toUpperCase() || ''} `,
-          insertTextRules: monacoEditor.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-          range,
-        }))
+      // here we can add append arguments
+      const appendCommands = foundArg?.append ?? []
+      return [
+        ...appendCommands
+          .map((arg: any) => buildSuggestion(arg, range, 'a')),
+        ...command.arguments
+          .filter((arg: any) => arg.optional)
+          .map((arg: any) => buildSuggestion(arg, range, 'b'))
+      ]
     }
 
     return []
