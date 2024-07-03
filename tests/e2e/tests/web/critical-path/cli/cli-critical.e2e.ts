@@ -35,7 +35,7 @@ test
         //Open CLI
         await t.click(browserPage.Cli.cliExpandButton);
 
-        await t.typeText(browserPage.Cli.cliCommandInput, 'SET key', { replace: true, paste: true });
+        await t.typeText(browserPage.Cli.cliCommandInput, 'set key', { replace: true, paste: true });
         await t.pressKey('enter');
         // Check error
         const errWrongArgs = browserPage.Cli.cliOutputResponseFail.withText('ERR wrong number of arguments for \'set\' command');
@@ -49,7 +49,7 @@ test
     });
 test
     .meta({ rte: rte.standalone })('Verify that user can scroll commands using "Tab" in CLI & execute it', async t => {
-        const commandToAutoComplete = 'INFO';
+        const commandToAutoComplete = 'info';
         const commandStartsWith = 'I';
         // Open CLI
         await t.click(browserPage.Cli.cliExpandButton);
@@ -77,7 +77,7 @@ test
             'FT.CREATE',
             'FT.DROPINDEX',
             'JSON.GET',
-            'JSON.DEL'
+            'json.del'
         ];
         const commandHint = 'key [META] [BLOB]';
         const command = 'ai.modelget';
