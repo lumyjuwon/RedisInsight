@@ -4,8 +4,8 @@
  */
 import isGlob from 'is-glob'
 import { cloneDeep } from 'lodash'
-import * as jsonpath from 'jsonpath'
-import { isRedisearchAvailable, isTriggeredAndFunctionsAvailable } from 'uiSrc/utils'
+import jsonpath from 'jsonpath'
+import { isRedisearchAvailable } from 'uiSrc/utils'
 import { ApiEndpoints, KeyTypes } from 'uiSrc/constants'
 import { KeyViewType } from 'uiSrc/slices/interfaces/keys'
 import { IModuleSummary, ITelemetrySendEvent, ITelemetrySendPageView, RedisModulesKeyType } from 'uiSrc/telemetry/interfaces'
@@ -33,13 +33,13 @@ const sendEventTelemetry = async ({ event, eventData = {}, traits = {} }: ITelem
   }
 }
 
-const sendPageViewTelemetry = async ({ name }: ITelemetrySendPageView) => {
+const sendPageViewTelemetry = async ({ name, eventData }: ITelemetrySendPageView) => {
   try {
     const isAnalyticsGranted = checkIsAnalyticsGranted()
     if (!isAnalyticsGranted) {
       return
     }
-    await apiService.post(`${ApiEndpoints.ANALYTICS_SEND_PAGE}`, { event: name })
+    await apiService.post(`${ApiEndpoints.ANALYTICS_SEND_PAGE}`, { event: name, eventData, })
   } catch (e) {
     // continue regardless of error
   }
@@ -66,10 +66,10 @@ const getJsonPathLevel = (path: string): string => {
       return 'root'
     }
     const levelsLength = jsonpath.parse(
-      `$${path.startsWith('.') ? '' : '..'}${path}`,
+      `$${path.startsWith('.') ? '.' : '..'}${path}`,
     ).length
 
-    return levelsLength === 1 ? 'root' : `${levelsLength - 2}`
+    return levelsLength === 2 ? 'root' : `${levelsLength - 2}`
   } catch (e) {
     return 'root'
   }
@@ -148,7 +148,6 @@ const DEFAULT_SUMMARY: IRedisModulesSummary = Object.freeze(
     RedisBloom: { loaded: false },
     RedisJSON: { loaded: false },
     RedisTimeSeries: { loaded: false },
-    'Triggers and Functions': { loaded: false },
     customModules: [],
   },
 )
@@ -178,12 +177,6 @@ const getRedisModulesSummary = (modules: AdditionalRedisModule[] = []): IRedisMo
       if (isRedisearchAvailable([module])) {
         const redisearchName = getEnumKeyBValue(RedisModules, RedisModules.RediSearch)
         summary[redisearchName as RedisModulesKeyType] = getModuleSummaryToSent(module)
-        return
-      }
-
-      if (isTriggeredAndFunctionsAvailable([module])) {
-        const triggeredAndFunctionsName = getEnumKeyBValue(RedisModules, RedisModules['Triggers and Functions'])
-        summary[triggeredAndFunctionsName as RedisModulesKeyType] = getModuleSummaryToSent(module)
         return
       }
 
