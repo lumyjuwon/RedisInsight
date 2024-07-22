@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import MonacoEditor, { monaco } from 'react-monaco-editor'
 import * as monacoEditor from 'monaco-editor'
-import { createPureProposals, Nullable } from 'uiSrc/utils'
+import { createPureProposals, generateArgsNames, Nullable } from 'uiSrc/utils'
 import { IEditorMount } from 'uiSrc/pages/workbench/interfaces'
-import { getArgByRest } from 'uiSrc/pages/redisearch/utils'
+import { findArg, getArgByRest, isCompositeArgument } from 'uiSrc/pages/redisearch/utils'
+import { SearchCommand } from 'uiSrc/pages/redisearch/types'
+import { CommandProvider } from 'uiSrc/constants'
 import commands from './commands.json'
 import styles from './styles.module.scss'
 
@@ -47,6 +49,12 @@ const RedisearchPage = () => {
 
   const monacoObjects = useRef<Nullable<IEditorMount>>(null)
   const disposeCompletionItemProvider = useRef(() => {})
+  const disposeSignatureHelpProvider = useRef(() => {})
+  const helpWidgetRef = useRef<any>({
+    isOpen: false,
+    parent: null,
+    currentArg: null
+  })
 
   useEffect(() => {
     monaco.languages.register({ id: 'RediSearch' })
@@ -65,14 +73,42 @@ const RedisearchPage = () => {
 
     setupSuggestions(suggestionsList)
 
+    disposeSignatureHelpProvider.current?.()
+    disposeSignatureHelpProvider.current = monaco.languages.registerSignatureHelpProvider(
+      'RediSearch',
+      {
+        provideSignatureHelp: (): any => {
+          if (!helpWidgetRef.current?.isOpen) return null
+
+          const label = generateArgsNames(CommandProvider.Main, helpWidgetRef.current?.parent?.arguments || []).join(' ')
+          const arg = helpWidgetRef.current?.currentArg?.name || ''
+
+          return {
+            dispose: () => {},
+            value: {
+              activeParameter: 0,
+              activeSignature: 0,
+              signatures: [{
+                label,
+                parameters: [{ label: arg }]
+              }]
+            }
+          }
+        }
+      }
+    ).dispose
+
     // TODO: for testing - we show suggestion on each change cursor position
     // hope it will be changed
     editor.onDidChangeCursorPosition(() => {
       const suggestionsList = prepareSuggestions(editor)
 
-      if (suggestionsList) {
+      if (suggestionsList.length) {
         setupSuggestions(suggestionsList)
+        return
       }
+
+      editor?.trigger('', 'editor.action.triggerParameterHints', '')
     })
   }
 
@@ -111,6 +147,8 @@ const RedisearchPage = () => {
 
     if (!position || !model) return []
 
+    helpWidgetRef.current.isOpen = false
+
     const word = model?.getWordUntilPosition(position)
     const wordOutsideOffset = {
       left: model.getValueInRange({
@@ -139,7 +177,7 @@ const RedisearchPage = () => {
 
     const [firstArg] = value.split(' ')
     const commandName = firstArg?.toUpperCase()
-    const command = commands[commandName]
+    const command = commands[commandName] as SearchCommand
 
     if (!command && position.lineNumber === 1 && word.startColumn === 1) {
       return DEFAULT_COMMANDS_LIST.map((command) => ({
@@ -160,11 +198,18 @@ const RedisearchPage = () => {
 
     const [, ...prevArgs] = splitQuery(prevQuery)
 
-    const findArg = (args: any[], prev: string[], parent?: any): any => {
+    const getArgList = (args: SearchCommand[], prev: string[], parent?: SearchCommand): any => {
       for (let i = prev.length - 1; i >= 0; i--) {
-        const arg = prev[i]
-        const currentArg = args.find((cArg) => cArg.arguments?.[0]?.token?.toLowerCase() === arg.toLowerCase() || cArg.name?.toLowerCase() === arg.toLowerCase())
-        if (currentArg?.arguments) return findArg(currentArg.arguments, prev.slice(i), currentArg)
+        let arg = prev[i]
+
+        const prevArg = prev[i - 1]
+        if (isCompositeArgument(arg, prevArg)) {
+          arg = [arg, prevArg].join(' ')
+          i--
+        }
+
+        const currentArg = findArg(args, arg)
+        if (currentArg?.arguments) return getArgList(currentArg.arguments, prev.slice(i), currentArg)
 
         const tokenIndex = args.findIndex((cArg) => cArg.token?.toLowerCase() === arg.toLowerCase())
         const token = args[tokenIndex]
@@ -175,7 +220,10 @@ const RedisearchPage = () => {
 
           // getArgByRest - here we preparing the list of arguments which can be inserted,
           // this is the main function which suggest arguments
-          return getArgByRest(pastArgs, commandArgs)
+          return {
+            ...getArgByRest(pastArgs, commandArgs, currentArg),
+            parent: parent || token
+          }
         }
       }
 
@@ -183,7 +231,7 @@ const RedisearchPage = () => {
     }
 
     // just suggest indexes - in future get from BE
-    if (prevArgs.length === 0 && command?.arguments[0].name === 'index') {
+    if (prevArgs.length === 0 && command?.arguments?.[0]?.name === 'index') {
       return LIST_OF_INDEXES.map((index) => ({
         label: index,
         kind: monacoEditor.languages.CompletionItemKind.Constant,
@@ -193,8 +241,12 @@ const RedisearchPage = () => {
       }))
     }
 
-    const foundArg = findArg(command?.arguments || [], prevArgs)
-    console.log({ foundArg })
+    const foundArg = getArgList(command?.arguments || [], prevArgs)
+    helpWidgetRef.current = {
+      isOpen: !!foundArg?.stopArg,
+      parent: foundArg?.parent,
+      currentArg: foundArg?.stopArg
+    }
 
     // here we suggest arguments of argument
     if (foundArg && !foundArg.isComplete) {
@@ -211,7 +263,7 @@ const RedisearchPage = () => {
       return [
         ...appendCommands
           .map((arg: any) => buildSuggestion(arg, range, 'a')),
-        ...command.arguments
+        ...(command.arguments || [])
           .filter((arg: any) => arg.optional)
           .map((arg: any) => buildSuggestion(arg, range, 'b'))
       ]
