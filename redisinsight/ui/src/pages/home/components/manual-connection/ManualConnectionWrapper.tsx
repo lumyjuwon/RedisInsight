@@ -216,7 +216,7 @@ const ManualConnectionWrapper = (props: Props) => {
         updatedValues.caCert = database.caCert
       }
 
-      if (values.selectedTlsClientCertId === ADD_NEW && values.newTlsCertPairName !== '' && values.newTlsCertPairName === editedInstance.newTlsCertPairName?.name) {
+      if (values.selectedTlsClientCertId === ADD_NEW && values.newTlsCertPairName !== '' && values.newTlsCertPairName === editedInstance?.clientCert?.name) {
         updatedValues.clientCert = database.clientCert
       }
 
