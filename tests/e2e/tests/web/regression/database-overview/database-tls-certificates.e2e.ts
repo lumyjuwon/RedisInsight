@@ -44,7 +44,8 @@ test('Verify that user can remove added certificates', async t => {
     await myRedisDatabasePage.clickOnEditDBByName(ossStandaloneTlsConfig.databaseName);
     await t.expect(myRedisDatabasePage.AddRedisDatabase.requiresTlsClientCheckbox.checked).notOk('the certificate was not removed');
 
-    await myRedisDatabasePage.clickOnDBByName(ossStandaloneConfig.databaseName!);
+    await myRedisDatabasePage.clickOnDBByName(ossStandaloneConfig.databaseName);
+    await t.expect(browserPage.addKeyButton.exists).ok('ths db is opened');
 
     await t.click(browserPage.NavigationPanel.myRedisDBButton);
     await myRedisDatabasePage.clickOnDBByName(ossStandaloneTlsConfig.databaseName);
