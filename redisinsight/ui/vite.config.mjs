@@ -6,6 +6,7 @@ import { reactClickToComponent } from 'vite-plugin-react-click-to-component'
 // import { compression } from 'vite-plugin-compression2'
 import { fileURLToPath, URL } from 'url'
 import path from 'path'
+import { riConfig } from './config/config'
 
 const hostedApiBaseUrl = process.env.RI_HOSTED_API_BASE_URL
 const isElectron = process.env.RI_APP_TYPE === 'electron'
@@ -111,6 +112,9 @@ export default defineConfig({
   },
   define: {
     global: 'globalThis',
+    RI_CONFIG: riConfig,
+
+    // TODO: Remove after moving env variables to riConfig.ts
     'process.env': {
       RI_API_PREFIX: 'api',
       RI_APP_PORT: '5540',
