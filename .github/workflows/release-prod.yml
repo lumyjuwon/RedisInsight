@@ -35,6 +35,7 @@ jobs:
   aws-prod:
     name: Realse to AWS S3
     uses: ./.github/workflows/aws.yml
+    if: ${{ always() }}
     needs: virustotal-prod
     secrets: inherit
 
