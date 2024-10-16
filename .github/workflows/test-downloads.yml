@@ -40,3 +40,10 @@ jobs:
 
       - name: Display structure of downloaded files
         run: ls -R
+
+      - name: Zip file
+        run: |
+          name="artifact"
+          zip -r "./release/${name}.zip" "./release/${name}"
+          ls -R
+
