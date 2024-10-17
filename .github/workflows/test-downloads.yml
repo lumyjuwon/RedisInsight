@@ -11,23 +11,51 @@ jobs:
       - name: 'custom file'
         run: |
           mkdir -p release
+          mkdir -p release/2
           echo "Artifact 1 content" > release/art1.txt
           echo "Artifact 2 content" > release/art2.txt
+          echo "Artifact 3 content" > release/2/art.txt
           echo "Artifact 3 content" > release/diff_name_art3.txt
 
-      - name: 'store artifacts 1'
-        uses: actions/upload-artifact@v4
-        with:
-          name: 'artifact'
-          path: |
-            release/art*
+      # - name: 'store artifacts 1'
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: 'artifact'
+      #     path: |
+      #       release/art*
 
-      - name: 'store artifacts 2'
+      # - name: 'store artifacts 2'
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: 'diff'
+      #     path: |
+      #       release/diff*
+
+      - name: 'store artifacts 3'
         uses: actions/upload-artifact@v4
         with:
-          name: 'diff'
+          name: 'art'
           path: |
-            release/diff*
+            release/2/art*
+
+  # zip-test:
+  #   name: Download files
+  #   needs: upload
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         name: artifact
+  #         path: ./release
+
+  #     - name: Display structure of downloaded files
+  #       run: ls -R
+
+  #     - name: Zip file
+  #       run: |
+  #         name="artifact"
+  #         zip -r "./release/${name}.zip" "./release/${name}"
+  #         ls -R
 
   download-test:
     name: Download files
@@ -36,7 +64,6 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: artifact
           path: ./release
 
       - name: Display structure of downloaded files
@@ -44,7 +71,8 @@ jobs:
 
       - name: Zip file
         run: |
-          name="artifact"
-          zip -r "./release/${name}.zip" "./release/${name}"
-          ls -R
+          root_dir="./release"
 
+          find "$root_dir" -mindepth 2 -maxdepth 2 -type f -exec mv {} "$root_dir" \;
+
+          ls -R
