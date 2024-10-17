@@ -69,10 +69,57 @@ jobs:
       - name: Display structure of downloaded files
         run: ls -R
 
+      - name: Generate files
+        run: |
+          base_dir="./release"
+
+          declare -A dirs=(
+            ["docker"]="docker-linux-alpine.amd64.tar docker-linux-alpine.arm64.tar"
+            ["linux-appimage-build"]="Redis-Insight-linux-x86_64.AppImage"
+            ["linux-deb-build"]="Redis-Insight-linux-amd64.deb"
+            ["linux-rpm-build"]="Redis-Insight-linux-x86_64.rpm"
+            ["linux-snap-builds"]="Redis-Insight-linux-amd64.snap latest-linux.yml"
+            ["macos-arm-builds"]="Redis-Insight-mac-arm64.dmg Redis-Insight-mac-arm64.dmg.blockmap"
+            ["macos-mas-builds"]="Redis-Insight-mac-universal-mas.pkg latest-mac.yml"
+            ["macos-x64-builds"]="Redis-Insight-mac-x64.dmg Redis-Insight-mac-x64.dmg.blockmap"
+            ["redistack-builds"]="Redis-Insight-app-darwin.arm64.tar.gz Redis-Insight-app-darwin.x64.tar.gz"
+            ["web"]="Redis-Insight-web-darwin.arm64.tar.gz Redis-Insight-web-darwin.x64.tar.gz Redis-Insight-web-linux-musl.arm64.tar.gz Redis-Insight-web-linux-musl.x64.tar.gz Redis-Insight-web-linux.arm64.tar.gz Redis-Insight-web-linux.x64.tar.gz Redis-Insight-web-win32.x64.tar.gz"
+            ["web-mini"]="Redis-Insight-web-darwin.arm64.tar.gz Redis-Insight-web-darwin.x64.tar.gz Redis-Insight-web-linux-musl.arm64.tar.gz Redis-Insight-web-linux-musl.x64.tar.gz Redis-Insight-web-linux.arm64.tar.gz Redis-Insight-web-linux.x64.tar.gz Redis-Insight-web-win32.x64.tar.gz"
+            ["windows-builds"]="Redis-Insight-win-installer.exe Redis-Insight-win-installer.exe.blockmap builder-debug.yml latest.yml"
+          )
+
+          mkdir -p "$base_dir"
+
+          for dir in "${!dirs[@]}"; do
+            mkdir -p "$base_dir/$dir"
+            for file in ${dirs[$dir]}; do
+              echo "test" > "$base_dir/$dir/$file"
+            done
+          done
+
+      - run: ls -R ./release
+
       - name: Zip file
         run: |
           root_dir="./release"
 
-          find "$root_dir" -mindepth 2 -maxdepth 2 -type f -exec mv {} "$root_dir" \;
+
+          # Define array of folders to exclude
+          exclude=("web" "web-mini" "redistack-builds")
+
+          # Iterate through first-level directories in ./release
+          for dir in ./release/*/; do
+            dir_name=$(basename "$dir")
+
+            # Check if the directory is not in the exclude list
+            if [[ ! " ${exclude[@]} " =~ " ${dir_name} " ]]; then
+              # Move all files from the subdirectory to the release directory
+              mv "$dir"* ./release/
+
+              # Remove the now-empty subdirectory
+              rmdir "$dir"
+            fi
+          done
+
 
           ls -R
