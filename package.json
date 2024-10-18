@@ -107,7 +107,7 @@
     "@types/jest": "^27.5.2",
     "@types/js-yaml": "^4.0.9",
     "@types/json-bigint": "^1.0.1",
-    "@types/jsonpath": "^0.2.0",
+    "@types/jsonpath": "^0.2.4",
     "@types/lodash": "^4.14.171",
     "@types/node": "14.14.10",
     "@types/pako": "^2.0.0",
