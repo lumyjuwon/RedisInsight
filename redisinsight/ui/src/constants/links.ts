@@ -16,6 +16,7 @@ export const EXTERNAL_LINKS = {
   rdiPipeline: 'https://redis.io/docs/latest/integrate/redis-data-integration/ingest/data-pipelines/data-pipelines/',
   rdiPipelineTransforms: 'https://redis.io/docs/latest/integrate/redis-data-integration/ingest/data-pipelines/transform-examples/',
   pubSub: 'https://redis.io/docs/latest/commands/psubscribe/',
+  copilotMoreInfo: 'https://redis.io/docs/latest/develop/connect/insight/copilot-faq/',
 }
 
 export const UTM_CAMPAINGS: Record<any, string> = {
@@ -25,6 +26,7 @@ export const UTM_CAMPAINGS: Record<any, string> = {
   [CloudSsoUtmCampaign.BrowserFilter]: 'browser_filter',
   [OAuthSocialSource.EmptyDatabasesList]: 'empty_db_list',
   PubSub: 'pub_sub',
+  Copilot: 'copilot',
   Main: 'main',
 }
 
